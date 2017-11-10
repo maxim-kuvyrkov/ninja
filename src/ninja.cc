@@ -832,11 +832,14 @@ bool DebugEnable(const string& name) {
   } else if (name == "nostatcache") {
     g_experimental_statcache = false;
     return true;
+  } else if (name == "syslimits") {
+    g_syslimits = true;
+    return true;
   } else {
     const char* suggestion =
         SpellcheckString(name.c_str(),
                          "stats", "explain", "keepdepfile", "keeprsp",
-                         "nostatcache", NULL);
+                         "nostatcache", "syslimits", NULL);
     if (suggestion) {
       Error("unknown debug setting '%s', did you mean '%s'?",
             name.c_str(), suggestion);
@@ -1051,13 +1054,21 @@ int ReadFlags(int* argc, char*** argv,
 
   int opt;
   while (!options->tool &&
-         (opt = getopt_long(*argc, *argv, "d:f:j:k:l:m:nt:vw:C:h", kLongOptions,
+         (opt = getopt_long(*argc, *argv, "d:D:f:j:k:l:m:M:nt:vw:C:h", kLongOptions,
                             NULL)) != -1) {
     switch (opt) {
       case 'd':
         if (!DebugEnable(optarg))
           return 1;
         break;
+      case 'D': {
+        char* end;
+        int value = strtol(optarg, &end, 10);
+        if (*end != 0 || value <= 0)
+          Fatal("invalid -D parameter");
+        config->max_limit_delay = value;
+        break;
+      }
       case 'f':
         options->input_file = optarg;
         break;
@@ -1094,7 +1105,15 @@ int ReadFlags(int* argc, char*** argv,
         const int value = strtol(optarg, &end, 10);
         if (end == optarg || value < 0 || value > 100)
           Fatal("-m parameter is invalid: allowed range is [0,100]");
-        config->max_memory_usage = value/100.0; // map to [0.0,100.0]
+        config->max_memory_usage = value/100.0; // map to [0.0,1.0]
+        break;
+      }
+      case 'M': {
+        char* end;
+        const int value = strtol(optarg, &end, 10);
+        if (end == optarg || value < 0 || value > 100)
+          Fatal("-M parameter is invalid: allowed range is [0,100]");
+        config->max_cg_mem_usage = value/100.0; // map to [0.0,1.0]
         break;
       }
       case 'n':

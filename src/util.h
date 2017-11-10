@@ -87,6 +87,8 @@ double GetLoadAverage();
 /// on error or if the feature is not supported on this platform.
 double GetMemoryUsage();
 
+double GetCgroupMemoryUsage();
+
 /// Elide the given string @a str with '...' in the middle if the length
 /// exceeds @a width.
 string ElideMiddle(const string& str, size_t width);

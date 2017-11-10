@@ -126,7 +126,8 @@ struct CommandRunner {
 struct BuildConfig {
   BuildConfig() : verbosity(NORMAL), dry_run(false), parallelism(1),
                   failures_allowed(1), max_load_average(-0.0f),
-                  max_memory_usage(-0.0f) {}
+                  max_cg_mem_usage(-0.0f), max_memory_usage(-0.0f),
+                  max_limit_delay (-1) {}
 
   enum Verbosity {
     NORMAL,
@@ -140,10 +141,12 @@ struct BuildConfig {
   /// The maximum load average we must not exceed. A negative value
   /// means that we do not have any limit.
   double max_load_average;
+  double max_cg_mem_usage;
   /// The maximum memory usage we must not exceed. The value is
   /// defined within [0.0,1.0]. A negative values indicates that we do
   /// not have any limit.
   double max_memory_usage;
+  int max_limit_delay;
 };
 
 /// Builder wraps the build process: starting commands, updating status.

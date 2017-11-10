@@ -639,6 +639,25 @@ double GetMemoryUsage() {
 #endif
 }
 
+double GetCgroupMemoryUsage() {
+  uint64_t usage(0), limit(0), cache(0);
+  ifstream("/sys/fs/cgroup/memory/memory.usage_in_bytes", ifstream::in) >> usage;
+  ifstream("/sys/fs/cgroup/memory/memory.limit_in_bytes", ifstream::in) >> limit;
+
+  ifstream memstat("/sys/fs/cgroup/memory/memory.stat", ifstream::in);
+  string token;
+  while (memstat >> token) {
+    if (token == "total_cache") {
+      memstat >> cache;
+      break;
+    }
+  }
+
+  if (usage > 0 && limit > 0 && cache <= usage && usage <= limit)
+    return (double)(usage - cache) / limit;
+  return -0.0f; // this is the fallback in case the API has changed
+}
+
 string ElideMiddle(const string& str, size_t width) {
   const int kMargin = 3;  // Space for "...".
   string result = str;

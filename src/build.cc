@@ -23,6 +23,8 @@
 #ifdef _WIN32
 #include <fcntl.h>
 #include <io.h>
+#else
+#include <unistd.h>
 #endif
 
 #if defined(__SVR4) && defined(__sun)
@@ -513,11 +515,62 @@ void RealCommandRunner::Abort() {
 bool RealCommandRunner::CanRunMore() {
   size_t subproc_number =
       subprocs_.running_.size() + subprocs_.finished_.size();
-  return (int)subproc_number < config_.parallelism
-    && ((subprocs_.running_.empty() || config_.max_load_average <= 0.0f)
-        || GetLoadAverage() < config_.max_load_average)
-    && ((subprocs_.running_.empty() || config_.max_memory_usage <= 0.0f)
-	|| GetMemoryUsage() < config_.max_memory_usage);
+  bool r = ((int)subproc_number < config_.parallelism);
+  double load(-0.0f), mem(-0.0f), cg_mem(-0.0f);
+
+  r = r && ((subprocs_.running_.empty() || config_.max_load_average <= 0.0f)
+	    || (load = GetLoadAverage()) < config_.max_load_average);
+  r = r && ((subprocs_.running_.empty() || config_.max_memory_usage <= 0.0f)
+	    || (mem = GetMemoryUsage()) < config_.max_memory_usage);
+  r = r && ((subprocs_.running_.empty() || config_.max_cg_mem_usage <= 0.0f)
+	    || (cg_mem = GetCgroupMemoryUsage()) < config_.max_cg_mem_usage);
+
+  if (!r && g_syslimits) {
+    if (load >= config_.max_load_average && config_.max_load_average > 0.0f) {
+      fprintf (stderr, "\nninja syslimit: loadavg %.0f >= %.0f\n",
+	       load, config_.max_load_average);
+    }
+    if (mem >= config_.max_memory_usage && config_.max_memory_usage > 0.0f) {
+      fprintf (stderr, "\nninja syslimit: memusage %.0f >= %.0f\n",
+	       100 * mem, 100 * config_.max_memory_usage);
+    }
+    if (cg_mem >= config_.max_cg_mem_usage && config_.max_cg_mem_usage > 0.0f) {
+      fprintf (stderr, "\nninja syslimit: cgmemory %.0f >= %.0f\n",
+	       100 * cg_mem, 100 * config_.max_cg_mem_usage);
+    }
+  }
+
+  if (r && config_.max_limit_delay > 0) {
+    double delay_factor(0.0f), increase_factor(0.0f);
+    const char *delay_str = "";
+
+    if (load >= 0.0f && delay_factor < load / config_.max_load_average) {
+      delay_factor = load / config_.max_load_average;
+      delay_str = "loadavg";
+    }
+    if (mem >= 0.0f && delay_factor < mem / config_.max_memory_usage) {
+      delay_factor = mem / config_.max_memory_usage;
+      delay_str = "memory";
+    }
+    if (cg_mem >= 0.0f && delay_factor < cg_mem / config_.max_cg_mem_usage) {
+      delay_factor = cg_mem / config_.max_cg_mem_usage;
+      delay_str = "cg_mem";
+    }
+
+    int future_tasks = config_.parallelism - (int)subproc_number - 1;
+    increase_factor = (double)future_tasks / config_.parallelism;
+    increase_factor *= (double)subprocs_.running_.size() / config_.parallelism;
+    increase_factor *= delay_factor;
+
+    unsigned int delay((1000 * config_.max_limit_delay) * delay_factor * increase_factor);
+    if (delay > 0) {
+      if (g_syslimits)
+	fprintf (stderr, "\nninja syslimit: delay %.0f\t%s_factor %.2f\tincrease_factor %.2f\n",
+		 (double) delay / 1000, delay_str, delay_factor, increase_factor);
+      usleep (delay);
+    }
+  }
+  return r;
 }
 
 bool RealCommandRunner::StartCommand(Edge* edge) {
